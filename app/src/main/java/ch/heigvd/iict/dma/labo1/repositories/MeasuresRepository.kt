@@ -5,9 +5,12 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.Transformations
 import ch.heigvd.iict.dma.labo1.models.*
+import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlin.system.measureTimeMillis
 
 class MeasuresRepository(private val scope : CoroutineScope,
@@ -43,6 +46,12 @@ class MeasuresRepository(private val scope : CoroutineScope,
         _measures.postValue(mutableListOf())
     }
 
+    fun measuresToJson() : String {
+        var listOfMeasure = Gson().toJson(measures.value)
+        Log.d("Json measures sent", listOfMeasure)
+        return listOfMeasure
+    }
+
     fun sendMeasureToServer(encryption : Encryption, compression : Compression, networkType : NetworkType, serialisation : Serialisation) {
         scope.launch(Dispatchers.Default) {
 
@@ -55,6 +64,21 @@ class MeasuresRepository(private val scope : CoroutineScope,
                 Log.e("SendViewModel", "Implement me !!! Send measures to $url") //TODO
             }
             _requestDuration.postValue(elapsed)
+
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.outputStream.bufferedWriter(Charsets.UTF_8).use {
+                it.append(measuresToJson())
+            }
+
+            // on traite la réponse du service REST
+            val responseCode = connection.responseCode
+            Log.d("MeasuresRepository", "responseCode: $responseCode")
+            connection.inputStream.bufferedReader(Charsets.UTF_8).use {
+                Log.d("MeasuresRepository", it.readText())
+            }
         }
     }
 
