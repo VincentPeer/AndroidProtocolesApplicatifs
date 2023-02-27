@@ -9,8 +9,10 @@ import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.*
 import kotlin.system.measureTimeMillis
 
 class MeasuresRepository(private val scope : CoroutineScope,
@@ -65,7 +67,10 @@ class MeasuresRepository(private val scope : CoroutineScope,
             }
             _requestDuration.postValue(elapsed)
 
-            val connection = URL(url).openConnection() as HttpURLConnection
+            val connection = withContext(Dispatchers.IO) {
+                URL(url).openConnection()
+            } as HttpURLConnection
+
             connection.requestMethod = "POST"
             connection.doOutput = true
             connection.setRequestProperty("Content-Type", "application/json")
@@ -73,13 +78,28 @@ class MeasuresRepository(private val scope : CoroutineScope,
                 it.append(measuresToJson())
             }
 
-            // on traite la réponse du service REST
+            // On traite la réponse du service REST
             val responseCode = connection.responseCode
+            val json : String
             Log.d("MeasuresRepository", "responseCode: $responseCode")
             connection.inputStream.bufferedReader(Charsets.UTF_8).use {
-                Log.d("MeasuresRepository", it.readText())
+                json = it.readText()
             }
+            //val measuresResponse = Gson().fromJson(json, mutableListOf<Measure>()::class.java)
+            val measuresResponse = stringToArray(json, Array<Measure>::class.java)[0]
+
+            // On met à jour les mesures avec le status
+            val l = _measures.value!!
+            for (i in 0 until l.size) {
+                l[i].status = measuresResponse[i].status
+            }
+
         }
     }
 
+    // Trick to convert a string to an array of objects
+    fun <T> stringToArray(s: String?, clazz: Class<Array<T>>?): MutableList<Array<T>> {
+        val arr = Gson().fromJson(s, clazz)
+        return Arrays.asList(arr)
+    }
 }
