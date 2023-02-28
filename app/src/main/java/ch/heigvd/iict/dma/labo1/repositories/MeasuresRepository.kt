@@ -13,8 +13,11 @@ import kotlinx.coroutines.withContext
 import org.jdom2.DocType
 import org.jdom2.Document
 import org.jdom2.Element
+import org.jdom2.input.SAXBuilder
 import org.jdom2.output.Format
 import org.jdom2.output.XMLOutputter
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
@@ -81,6 +84,7 @@ class MeasuresRepository(private val scope : CoroutineScope,
                 }
                 Serialisation.XML -> {
                     sendXMLFormat(connection)
+                    getXMLResponse(connection)
                 }
                 Serialisation.PROTOBUF -> {
                     sendPROTOBUFFormat(connection)
@@ -147,9 +151,35 @@ class MeasuresRepository(private val scope : CoroutineScope,
             writer.write(xmlString)
         }
 
-        Log.d("MeasuresRepository", "document sent : $xmlString")
+        // Log.d("MeasuresRepository", "document sent : $xmlString")
+    }
+
+    private fun getXMLResponse(connection: HttpURLConnection) {
         val responseCode = connection.responseCode
         Log.d("MeasuresRepository", "responseCode for XML response: $responseCode")
+        var response: String
+        connection.inputStream.bufferedReader(Charsets.UTF_8).use {
+            response = it.readText()
+        }
+        Log.d("MeasuresRepository", "Xml response: $response")
+
+        // Stop if any error appeared
+        if(responseCode != HttpURLConnection.HTTP_OK) {
+            Log.e("MeasuresRepository","XML format error : $responseCode error")
+            connection.disconnect()
+            return // todo smt better than return?
+        }
+
+        // Read response parse it with SAX
+        val reader = BufferedReader(InputStreamReader(connection.inputStream))
+        val responseBuilder = StringBuilder()
+        var line: String?
+//        while(reader.readLine().also { line = it } != null) {
+//            responseBuilder.append(line)
+//        }
+//        val responseString = responseBuilder.toString()
+//        val document = SAXBuilder().build(responseString)
+       // Log.d("MeasuresRepository", "Xml response document parsed: $responseString")
     }
 
     private fun sendPROTOBUFFormat(connection: HttpURLConnection) {
