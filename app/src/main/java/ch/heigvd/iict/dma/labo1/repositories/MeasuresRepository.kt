@@ -16,9 +16,11 @@ import org.jdom2.Element
 import org.jdom2.input.SAXBuilder
 import org.jdom2.output.Format
 import org.jdom2.output.XMLOutputter
+import org.xml.sax.InputSource
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.io.StringReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.*
@@ -66,7 +68,7 @@ class MeasuresRepository(private val scope : CoroutineScope,
             }
 
             val elapsed = measureTimeMillis {
-                Log.e("SendViewModel", "Implement me !!! Send measures to ${url }") //TODO
+                Log.e("SendViewModel", "Implement me !!! Send measures to $url") //TODO
             }
             _requestDuration.postValue(elapsed)
 
@@ -157,29 +159,43 @@ class MeasuresRepository(private val scope : CoroutineScope,
     private fun getXMLResponse(connection: HttpURLConnection) {
         val responseCode = connection.responseCode
         Log.d("MeasuresRepository", "responseCode for XML response: $responseCode")
-        var response: String
-        connection.inputStream.bufferedReader(Charsets.UTF_8).use {
-            response = it.readText()
-        }
-        Log.d("MeasuresRepository", "Xml response: $response")
 
         // Stop if any error appeared
         if(responseCode != HttpURLConnection.HTTP_OK) {
             Log.e("MeasuresRepository","XML format error : $responseCode error")
             connection.disconnect()
-            return // todo smt better than return?
+            return // todo smth better than return?
         }
 
-        // Read response parse it with SAX
-        val reader = BufferedReader(InputStreamReader(connection.inputStream))
+        val inputStream = connection.inputStream
+        val reader = BufferedReader(InputStreamReader(inputStream))
         val responseBuilder = StringBuilder()
         var line: String?
-//        while(reader.readLine().also { line = it } != null) {
-//            responseBuilder.append(line)
-//        }
-//        val responseString = responseBuilder.toString()
-//        val document = SAXBuilder().build(responseString)
-       // Log.d("MeasuresRepository", "Xml response document parsed: $responseString")
+        while (reader.readLine().also { line = it } != null) {
+            responseBuilder.append(line)
+        }
+        val responseString = responseBuilder.toString()
+
+        // Parser la réponse XML avec JDOM
+        val builder = SAXBuilder()
+        builder.setFeature("http://xml.org/sax/features/external-general-entities", false)
+//        builder.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+        val document = builder.build(InputSource(StringReader(responseString)))
+
+
+        // Récupérer les éléments racine et enfants du document
+        val rootElement = document.rootElement
+        val measureElements = rootElement.getChildren("measure")
+
+        // Parcourir les éléments mesure et afficher leurs attributs et propriétés
+        measureElements.forEach { measureElement ->
+            val id = measureElement.getAttributeValue("id")
+            val status = measureElement.getAttributeValue("status")
+
+            println("Measure:")
+            println("- id: $id")
+            println("- status: $status")
+        }
     }
 
     private fun sendPROTOBUFFormat(connection: HttpURLConnection) {
