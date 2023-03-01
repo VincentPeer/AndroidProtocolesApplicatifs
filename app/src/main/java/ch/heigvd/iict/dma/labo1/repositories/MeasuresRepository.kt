@@ -167,8 +167,7 @@ class MeasuresRepository(private val scope : CoroutineScope,
             return // todo smth better than return?
         }
 
-        val inputStream = connection.inputStream
-        val reader = BufferedReader(InputStreamReader(inputStream))
+        val reader = BufferedReader(InputStreamReader(connection.inputStream))
         val responseBuilder = StringBuilder()
         var line: String?
         while (reader.readLine().also { line = it } != null) {
@@ -176,25 +175,21 @@ class MeasuresRepository(private val scope : CoroutineScope,
         }
         val responseString = responseBuilder.toString()
 
-        // Parser la réponse XML avec JDOM
+        // Parsing xml response with SAX
         val builder = SAXBuilder()
         builder.setFeature("http://xml.org/sax/features/external-general-entities", false)
 //        builder.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
         val document = builder.build(InputSource(StringReader(responseString)))
 
-
-        // Récupérer les éléments racine et enfants du document
+        // Retrieve the elements
         val rootElement = document.rootElement
         val measureElements = rootElement.getChildren("measure")
 
-        // Parcourir les éléments mesure et afficher leurs attributs et propriétés
-        measureElements.forEach { measureElement ->
-            val id = measureElement.getAttributeValue("id")
-            val status = measureElement.getAttributeValue("status")
-
-            println("Measure:")
-            println("- id: $id")
-            println("- status: $status")
+        // Update measures status
+        measureElements.forEach { measureResponseElement ->
+            val id = measureResponseElement.getAttributeValue("id").toInt()
+            val status = measureResponseElement.getAttributeValue("status")
+            _measures.value?.get(id)?.status = Measure.Status.valueOf(status)
         }
     }
 
