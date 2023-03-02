@@ -25,6 +25,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.*
 import kotlin.system.measureTimeMillis
+import ch.heigvd.iict.dma.labo1.protobuf.MeasuresOuterClass
 
 class MeasuresRepository(private val scope : CoroutineScope,
                          private val dtd : String = "https://mobile.iict.ch/measures.dtd",
@@ -90,6 +91,7 @@ class MeasuresRepository(private val scope : CoroutineScope,
                 }
                 Serialisation.PROTOBUF -> {
                     sendPROTOBUFFormat(connection)
+                    getPROTOBUFResponse(connection)
                 }
             }
         }
@@ -194,12 +196,49 @@ class MeasuresRepository(private val scope : CoroutineScope,
     }
 
     private fun sendPROTOBUFFormat(connection: HttpURLConnection) {
-        // TODO
+        connection.setRequestProperty("Content-Type", "application/protobuf;charset=UTF-8")
+        val measures = MeasuresOuterClass.Measures.newBuilder()
+        _measures.value?.forEach { measure ->
+            measures.addMeasures(
+                MeasuresOuterClass.Measure.newBuilder()
+                    .setId(measure.id)
+                    .setStatus(MeasuresOuterClass.Status.valueOf(measure.status.name))
+                    .setType(measure.type.name)
+                    .setValue(measure.value)
+                    .setDate(measure.date.timeInMillis)
+                    .build()
+            )
+        }
+
+        // Sending data
+        val outputStream = connection.outputStream
+        measures.build().writeTo(outputStream)
+        outputStream.flush()
+        outputStream.close()
     }
 
-    // Trick to convert a string to an array of objects
-    private fun <T> stringToArray(s: String?, clazz: Class<Array<T>>?): MutableList<Array<T>> {
-        val arr = Gson().fromJson(s, clazz)
-        return mutableListOf(arr)
+    private fun getPROTOBUFResponse(connection: HttpURLConnection) {
+        val responseCode = connection.responseCode
+        Log.d("MeasuresRepository", "responseCode for PROTOBUF response: $responseCode")
+
+        // Stop if any error appeared
+        if(responseCode != HttpURLConnection.HTTP_OK) {
+            Log.e("MeasuresRepository","PROTOBUF format error : $responseCode error")
+            connection.disconnect()
+            return // todo smth better than return?
+        }
+
+        val response = MeasuresOuterClass.Measures.parseFrom(connection.inputStream)
+        response.measuresList.forEach { measure ->
+            _measures.value?.get(measure.id)?.status = Measure.Status.valueOf(measure.status.name)
+        }
+        println(response)
+
     }
-}
+
+        // Trick to convert a string to an array of objects
+        private fun <T> stringToArray(s: String?, clazz: Class<Array<T>>?): MutableList<Array<T>> {
+            val arr = Gson().fromJson(s, clazz)
+            return mutableListOf(arr)
+        }
+    }
