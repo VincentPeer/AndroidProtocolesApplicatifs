@@ -81,11 +81,12 @@ class MeasuresRepository(private val scope : CoroutineScope,
             connection.requestMethod = "POST"
             //connection.setRequestProperty("X-Network", NetworkType.CSD.name) // Q. 1.4
             connection.setRequestProperty("X-Network", networkType.name)
+            connection.setRequestProperty("X-Content-Encoding", compression.name)
             connection.doOutput = true
 
             when(serialisation) {
                 Serialisation.JSON -> {
-                    sendJSONFormat(connection, compression)
+                    sendJSONFormat(connection)
                     getJSONResponse(connection)
                 }
                 Serialisation.XML -> {
@@ -100,14 +101,12 @@ class MeasuresRepository(private val scope : CoroutineScope,
         }
     }
 
-    private fun sendJSONFormat(connection: HttpURLConnection, compression: Compression) {
+    private fun sendJSONFormat(connection: HttpURLConnection) {
         connection.setRequestProperty("Content-Type", "application/json;charset=UTF-8")
 
-        if(compression == Compression.DEFLATE) {
-            connection.setRequestProperty("X-Content-Encoding", "DEFLATE")
-            val deflater = DeflaterOutputStream(connection.outputStream, Deflater(Deflater.BEST_COMPRESSION, true))
-            deflater.write(Gson().toJson(measures.value).toByteArray())
-            deflater.close()
+        // Send measures weather they are compressed or not
+        if(connection.getRequestProperty("X-Content-Encoding") == "DEFLATE") {
+            sendDeflateData(connection, Gson().toJson(measures.value).toByteArray())
         } else {
             connection.outputStream.bufferedWriter(Charsets.UTF_8).use {
                 it.append(Gson().toJson(measures.value))
@@ -118,27 +117,19 @@ class MeasuresRepository(private val scope : CoroutineScope,
     private fun getJSONResponse(connection: HttpURLConnection) {
         val responseCode = connection.responseCode
         Log.d("MeasuresRepository", "responseCode for JSON response: $responseCode")
-        val compression = connection.getHeaderField("X-Content-Encoding")
 
         val json: String
-        if(compression == "DEFLATE") {
-            val inflater = InflaterInputStream(connection.inputStream, Inflater(true))
-            val bufferedReader = BufferedReader(InputStreamReader(inflater))
-            val responseStringBuilder = StringBuilder()
-            var line: String?
-            while (bufferedReader.readLine().also { line = it } != null) {
-                responseStringBuilder.append(line)
-            }
-            json = responseStringBuilder.toString()
+        // Read measures weather they are compressed or not
+        if(connection.getHeaderField("X-Content-Encoding") == "DEFLATE") {
+            json = getInflateData(connection)
         } else {
             connection.inputStream.bufferedReader(Charsets.UTF_8).use {
                 json = it.readText()
             }
         }
 
-        val response = stringToArray(json, Array<Measure>::class.java)[0]
-
         // Update local measures status with response measures status
+        val response = stringToArray(json, Array<Measure>::class.java)[0]
         val l = _measures.value!!
         for (i in 0 until l.size) {
             l[i].status = response[i].status
@@ -175,37 +166,35 @@ class MeasuresRepository(private val scope : CoroutineScope,
         // Sending data
         val xmlString = XMLOutputter(Format.getPrettyFormat()).outputString(document)
 
-        OutputStreamWriter(connection.outputStream).use { writer ->
-            writer.write(xmlString)
+        if(connection.getRequestProperty("X-Content-Encoding") == "DEFLATE") {
+            sendDeflateData(connection, xmlString.toByteArray())
+        } else {
+            OutputStreamWriter(connection.outputStream).use { writer ->
+                writer.write(xmlString)
+            }
+            connection.outputStream.flush()
         }
-        connection.outputStream.flush()
-
-        // Log.d("MeasuresRepository", "document sent : $xmlString")
     }
 
     private fun getXMLResponse(connection: HttpURLConnection) {
         val responseCode = connection.responseCode
         Log.d("MeasuresRepository", "responseCode for XML response: $responseCode")
 
-        // Stop if any error appeared
-        if(responseCode != HttpURLConnection.HTTP_OK) {
-            Log.e("MeasuresRepository","XML format error : $responseCode error")
-            connection.disconnect()
-            return // todo smth better than return?
-        }
-
         val reader = BufferedReader(InputStreamReader(connection.inputStream))
         val responseBuilder = StringBuilder()
-        var line: String?
-        while (reader.readLine().also { line = it } != null) {
-            responseBuilder.append(line)
+        if(connection.getRequestProperty("X-Content-Encoding") == "DEFLATE") {
+            responseBuilder.append(getInflateData(connection))
+        } else {
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                responseBuilder.append(line)
+            }
         }
-        val responseString = responseBuilder.toString()
 
         // Parsing xml response with SAX
+        val responseString = responseBuilder.toString()
         val builder = SAXBuilder()
         builder.setFeature("http://xml.org/sax/features/external-general-entities", false)
-//        builder.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
         val document = builder.build(InputSource(StringReader(responseString)))
 
         // Retrieve the elements
@@ -236,29 +225,53 @@ class MeasuresRepository(private val scope : CoroutineScope,
         }
 
         // Sending data
-        val outputStream = connection.outputStream
-        measures.build().writeTo(outputStream)
-        outputStream.flush()
-        outputStream.close()
+        if(connection.getRequestProperty("X-Content-Encoding") == "DEFLATE") {
+            sendDeflateData(connection, measures.build().toByteArray())
+        } else {
+            measures.build().writeTo(connection.outputStream)
+            connection.outputStream.flush()
+        }
     }
 
     private fun getPROTOBUFResponse(connection: HttpURLConnection) {
         val responseCode = connection.responseCode
         Log.d("MeasuresRepository", "responseCode for PROTOBUF response: $responseCode")
 
-        // Stop if any error appeared
-        if(responseCode != HttpURLConnection.HTTP_OK) {
-            Log.e("MeasuresRepository","PROTOBUF format error : $responseCode error")
-            connection.disconnect()
-            return // todo smth better than return?
-        }
+        val response : MeasuresOuterClass.Measures
+        if(connection.getRequestProperty("X-Content-Encoding") == "DEFLATE") {
+            val inflater = InflaterInputStream(connection.inputStream, Inflater(true))
+            val buffer = ByteArray(1024)
+            val outputStream = ByteArrayOutputStream()
+            var bytesRead = inflater.read(buffer)
+            while (bytesRead > 0) {
+                outputStream.write(buffer, 0, bytesRead)
+                bytesRead = inflater.read(buffer)
+            }
+            response = MeasuresOuterClass.Measures.parseFrom(outputStream.toByteArray())
+        } else {
+            response = MeasuresOuterClass.Measures.parseFrom(connection.inputStream)
 
-        val response = MeasuresOuterClass.Measures.parseFrom(connection.inputStream)
+        }
         response.measuresList.forEach { measure ->
             _measures.value?.get(measure.id)?.status = Measure.Status.valueOf(measure.status.name)
         }
-        println(response)
+    }
 
+    private fun sendDeflateData(connection: HttpURLConnection, bytes: ByteArray) {
+        val deflate = DeflaterOutputStream(connection.outputStream, Deflater(Deflater.BEST_COMPRESSION, true))
+        deflate.write(bytes)
+        deflate.close()
+    }
+
+    private fun getInflateData(connection: HttpURLConnection) : String {
+        val inflater = InflaterInputStream(connection.inputStream, Inflater(true))
+        val bufferedReader = BufferedReader(InputStreamReader(inflater))
+        val responseStringBuilder = StringBuilder()
+        var line: String?
+        while (bufferedReader.readLine().also { line = it } != null) {
+            responseStringBuilder.append(line)
+        }
+        return responseStringBuilder.toString()
     }
 
     // Trick to convert a string to an array of objects
