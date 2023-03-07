@@ -17,15 +17,16 @@ import org.jdom2.input.SAXBuilder
 import org.jdom2.output.Format
 import org.jdom2.output.XMLOutputter
 import org.xml.sax.InputSource
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.io.OutputStreamWriter
-import java.io.StringReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.*
 import kotlin.system.measureTimeMillis
 import ch.heigvd.iict.dma.labo1.protobuf.MeasuresOuterClass
+import java.io.*
+import java.util.zip.Deflater
+import java.util.zip.DeflaterOutputStream
+import java.util.zip.Inflater
+import java.util.zip.InflaterInputStream
 
 class MeasuresRepository(private val scope : CoroutineScope,
                          private val dtd : String = "https://mobile.iict.ch/measures.dtd",
@@ -78,11 +79,13 @@ class MeasuresRepository(private val scope : CoroutineScope,
             } as HttpURLConnection
 
             connection.requestMethod = "POST"
+            //connection.setRequestProperty("X-Network", NetworkType.CSD.name) // Q. 1.4
+            connection.setRequestProperty("X-Network", networkType.name)
             connection.doOutput = true
 
             when(serialisation) {
                 Serialisation.JSON -> {
-                    sendJSONFormat(connection)
+                    sendJSONFormat(connection, compression)
                     getJSONResponse(connection)
                 }
                 Serialisation.XML -> {
@@ -97,19 +100,40 @@ class MeasuresRepository(private val scope : CoroutineScope,
         }
     }
 
-    private fun sendJSONFormat(connection: HttpURLConnection) {
+    private fun sendJSONFormat(connection: HttpURLConnection, compression: Compression) {
         connection.setRequestProperty("Content-Type", "application/json;charset=UTF-8")
-        connection.outputStream.bufferedWriter(Charsets.UTF_8).use {
-            it.append(Gson().toJson(measures.value))
+
+        if(compression == Compression.DEFLATE) {
+            connection.setRequestProperty("X-Content-Encoding", "DEFLATE")
+            val deflater = DeflaterOutputStream(connection.outputStream, Deflater(Deflater.BEST_COMPRESSION, true))
+            deflater.write(Gson().toJson(measures.value).toByteArray())
+            deflater.close()
+        } else {
+            connection.outputStream.bufferedWriter(Charsets.UTF_8).use {
+                it.append(Gson().toJson(measures.value))
+            }
         }
     }
 
     private fun getJSONResponse(connection: HttpURLConnection) {
         val responseCode = connection.responseCode
-        val json: String
         Log.d("MeasuresRepository", "responseCode for JSON response: $responseCode")
-        connection.inputStream.bufferedReader(Charsets.UTF_8).use {
-            json = it.readText()
+        val compression = connection.getHeaderField("X-Content-Encoding")
+
+        val json: String
+        if(compression == "DEFLATE") {
+            val inflater = InflaterInputStream(connection.inputStream, Inflater(true))
+            val bufferedReader = BufferedReader(InputStreamReader(inflater))
+            val responseStringBuilder = StringBuilder()
+            var line: String?
+            while (bufferedReader.readLine().also { line = it } != null) {
+                responseStringBuilder.append(line)
+            }
+            json = responseStringBuilder.toString()
+        } else {
+            connection.inputStream.bufferedReader(Charsets.UTF_8).use {
+                json = it.readText()
+            }
         }
 
         val response = stringToArray(json, Array<Measure>::class.java)[0]
@@ -154,6 +178,7 @@ class MeasuresRepository(private val scope : CoroutineScope,
         OutputStreamWriter(connection.outputStream).use { writer ->
             writer.write(xmlString)
         }
+        connection.outputStream.flush()
 
         // Log.d("MeasuresRepository", "document sent : $xmlString")
     }
@@ -236,9 +261,9 @@ class MeasuresRepository(private val scope : CoroutineScope,
 
     }
 
-        // Trick to convert a string to an array of objects
-        private fun <T> stringToArray(s: String?, clazz: Class<Array<T>>?): MutableList<Array<T>> {
-            val arr = Gson().fromJson(s, clazz)
-            return mutableListOf(arr)
-        }
+    // Trick to convert a string to an array of objects
+    private fun <T> stringToArray(s: String?, clazz: Class<Array<T>>?): MutableList<Array<T>> {
+        val arr = Gson().fromJson(s, clazz)
+        return mutableListOf(arr)
     }
+}
