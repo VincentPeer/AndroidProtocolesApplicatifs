@@ -69,11 +69,6 @@ class MeasuresRepository(private val scope : CoroutineScope,
                 Encryption.SSL -> URL(httpsUrl)
             }
 
-            val elapsed = measureTimeMillis {
-                Log.e("SendViewModel", "Implement me !!! Send measures to $url") //TODO
-            }
-            _requestDuration.postValue(elapsed)
-
             val connection = withContext(Dispatchers.IO) {
                 url.openConnection()
             } as HttpURLConnection
@@ -84,20 +79,23 @@ class MeasuresRepository(private val scope : CoroutineScope,
             connection.setRequestProperty("X-Content-Encoding", compression.name)
             connection.doOutput = true
 
-            when(serialisation) {
-                Serialisation.JSON -> {
-                    sendJSONFormat(connection)
-                    getJSONResponse(connection)
-                }
-                Serialisation.XML -> {
-                    sendXMLFormat(connection)
-                    getXMLResponse(connection)
-                }
-                Serialisation.PROTOBUF -> {
-                    sendPROTOBUFFormat(connection)
-                    getPROTOBUFResponse(connection)
+            val elapsed = measureTimeMillis {
+                when(serialisation) {
+                    Serialisation.JSON -> {
+                        sendJSONFormat(connection)
+                        getJSONResponse(connection)
+                    }
+                    Serialisation.XML -> {
+                        sendXMLFormat(connection)
+                        getXMLResponse(connection)
+                    }
+                    Serialisation.PROTOBUF -> {
+                        sendPROTOBUFFormat(connection)
+                        getPROTOBUFResponse(connection)
+                    }
                 }
             }
+            _requestDuration.postValue(elapsed)
         }
     }
 
@@ -250,7 +248,6 @@ class MeasuresRepository(private val scope : CoroutineScope,
             response = MeasuresOuterClass.Measures.parseFrom(outputStream.toByteArray())
         } else {
             response = MeasuresOuterClass.Measures.parseFrom(connection.inputStream)
-
         }
         response.measuresList.forEach { measure ->
             _measures.value?.get(measure.id)?.status = Measure.Status.valueOf(measure.status.name)
