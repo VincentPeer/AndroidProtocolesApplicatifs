@@ -2,6 +2,7 @@ plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
     id 'com.google.devtools.ksp' version '1.7.20-1.0.7'
+    id 'com.google.gms.google-services'
 }
 
 android {
@@ -67,9 +68,9 @@ dependencies {
     androidTestImplementation 'androidx.room:room-testing:2.5.0'
 
     // Firebase messaging
-    implementation platform('com.google.firebase:firebase-bom:31.1.1')
-    implementation 'com.google.firebase:firebase-messaging:23.1.1'
-    implementation 'com.google.firebase:firebase-messaging-ktx:23.1.1'
+    implementation platform('com.google.firebase:firebase-bom:31.1.1') // Firebase BoM
+    implementation 'com.google.firebase:firebase-messaging'
+    implementation 'com.google.firebase:firebase-messaging-ktx'
 
 
 }

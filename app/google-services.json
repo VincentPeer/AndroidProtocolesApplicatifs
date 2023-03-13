@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "77355252987",
+    "project_id": "dma-labo1-20f60",
+    "storage_bucket": "dma-labo1-20f60.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:77355252987:android:9ff294093382a80ea5445e",
+        "android_client_info": {
+          "package_name": "ch.heigvd.iict.dma.labo1"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "77355252987-78q2o6qdua0mjt5a5hf45av5d9pa4ka4.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCpjFV4Pe62QsjSQNpv-DK_qHefJvasWOc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "77355252987-78q2o6qdua0mjt5a5hf45av5d9pa4ka4.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
