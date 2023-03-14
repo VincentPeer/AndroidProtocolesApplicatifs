@@ -9,6 +9,7 @@ import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.setupWithNavController
 import ch.heigvd.iict.dma.labo1.databinding.ActivityMainBinding
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.google.firebase.messaging.FirebaseMessaging
 
 class MainActivity : AppCompatActivity() {
 
@@ -17,6 +18,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Suscribe the app the Firebase topic
+        FirebaseMessaging.getInstance().subscribeToTopic("DMA_lab1")
+
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
